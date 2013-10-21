@@ -19,26 +19,6 @@
  */
 package org.neo4j.kernel.impl.transaction;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import javax.transaction.HeuristicMixedException;
-import javax.transaction.HeuristicRollbackException;
-import javax.transaction.NotSupportedException;
-import javax.transaction.RollbackException;
-import javax.transaction.Status;
-import javax.transaction.SystemException;
-import javax.transaction.Transaction;
-import javax.transaction.xa.XAException;
-import javax.transaction.xa.XAResource;
-
 import org.neo4j.graphdb.TransactionFailureException;
 import org.neo4j.graphdb.event.ErrorState;
 import org.neo4j.helpers.Exceptions;
@@ -53,6 +33,19 @@ import org.neo4j.kernel.impl.util.ExceptionCauseSetter;
 import org.neo4j.kernel.impl.util.StringLogger;
 import org.neo4j.kernel.impl.util.ThreadLocalWithSize;
 import org.neo4j.kernel.lifecycle.Lifecycle;
+
+import javax.transaction.*;
+import javax.transaction.xa.XAException;
+import javax.transaction.xa.XAResource;
+import java.io.File;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Default transaction manager implementation
@@ -244,8 +237,10 @@ public class TxManager extends AbstractTransactionManager implements Lifecycle
     synchronized void setTmNotOk( Throwable cause )
     {
         if ( !tmOk )
+        {
             return;
-        
+        }
+
         tmOk = false;
         tmNotOkCause = cause;
         log.logMessage( "setting TM not OK", cause );
@@ -276,6 +271,8 @@ public class TxManager extends AbstractTransactionManager implements Lifecycle
             peakConcurrentTransactions = concurrentTxCount;
         }
         startedTxCount.incrementAndGet();
+
+        log.info(String.format("Transaction %d started by thread %s", tx.getEventIdentifier(), Thread.currentThread().getName()), new RuntimeException());
         // start record written on resource enlistment
     }
 
@@ -320,6 +317,8 @@ public class TxManager extends AbstractTransactionManager implements Lifecycle
         {
             throw logAndReturn( "TM error tx commit", new IllegalStateException( "Not in transaction" ) );
         }
+
+        log.info(String.format("Transaction %d committing in thread %s", tx.getEventIdentifier(), Thread.currentThread().getName()));
 
         boolean hasAnyLocks = false;
         boolean successful = false;
@@ -594,16 +593,20 @@ public class TxManager extends AbstractTransactionManager implements Lifecycle
                     rolledBackTxCount.incrementAndGet();
                     tx.doRollback();
                 }
-                catch ( XAException e )
+                catch ( Throwable e )
                 {
                     log.logMessage( "Unable to rollback marked or active transaction. "
                             + "Some resources may be commited others not. "
                             + "Neo4j kernel should be SHUTDOWN for "
                             + "resource maintance and transaction recovery ---->", e );
                     setTmNotOk( e );
+                    String causeMessage = "Unable to rollback";
+                    if ( e instanceof XAException )
+                    {
+                        causeMessage += " ---> error code for rollback: " + ((XAException)e).errorCode;
+                    }
                     throw logAndReturn( "TM error tx rollback", Exceptions.withCause(
-                            new SystemException( "Unable to rollback " + " ---> error code for rollback: "
-                                    + e.errorCode ), e ) );
+                            new SystemException( causeMessage ), e ) );
                 }
                 tx.doAfterCompletion();
                 try
@@ -656,7 +659,7 @@ public class TxManager extends AbstractTransactionManager implements Lifecycle
         assertTmOk( "get transaction" );
         return txThreadMap.get();
     }
-    
+
     @Override
     public void resume( Transaction tx ) throws IllegalStateException,
             SystemException
@@ -955,7 +958,7 @@ public class TxManager extends AbstractTransactionManager implements Lifecycle
         }
         return tx != null ? ((TransactionImpl)tx).getState() : TransactionState.NO_STATE;
     }
-    
+
     private class TxManagerDataSourceRegistrationListener implements DataSourceRegistrationListener
     {
         @Override

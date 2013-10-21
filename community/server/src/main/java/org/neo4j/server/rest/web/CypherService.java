@@ -19,22 +19,25 @@
  */
 package org.neo4j.server.rest.web;
 
-import java.util.HashMap;
-import java.util.Map;
+import org.neo4j.cypher.CypherException;
+import org.neo4j.cypher.javacompat.ExecutionResult;
+import org.neo4j.graphdb.GraphDatabaseService;
+import org.neo4j.kernel.AbstractGraphDatabase;
+import org.neo4j.kernel.impl.util.StringLogger;
+import org.neo4j.kernel.logging.Logging;
+import org.neo4j.server.database.CypherExecutor;
+import org.neo4j.server.rest.repr.BadInputException;
+import org.neo4j.server.rest.repr.CypherResultRepresentation;
+import org.neo4j.server.rest.repr.InputFormat;
+import org.neo4j.server.rest.repr.OutputFormat;
 
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
-
-import org.neo4j.cypher.CypherException;
-import org.neo4j.cypher.javacompat.ExecutionResult;
-import org.neo4j.server.database.CypherExecutor;
-import org.neo4j.server.rest.repr.BadInputException;
-import org.neo4j.server.rest.repr.CypherResultRepresentation;
-import org.neo4j.server.rest.repr.InputFormat;
-import org.neo4j.server.rest.repr.OutputFormat;
+import java.util.HashMap;
+import java.util.Map;
 
 @Path("/cypher")
 public class CypherService
@@ -48,13 +51,16 @@ public class CypherService
     private CypherExecutor cypherExecutor;
     private OutputFormat output;
     private InputFormat input;
+    private StringLogger log;
 
     public CypherService( @Context CypherExecutor cypherExecutor, @Context InputFormat input,
-                          @Context OutputFormat output )
+                          @Context OutputFormat output, @Context GraphDatabaseService graphDb )
     {
         this.cypherExecutor = cypherExecutor;
         this.input = input;
         this.output = output;
+        Logging logging = ((AbstractGraphDatabase) graphDb).getDependencyResolver().resolveDependency(Logging.class);
+        log = logging.getMessagesLog(CypherService.class);
     }
 
     @POST
@@ -97,6 +103,7 @@ public class CypherService
         }
         catch ( Throwable e )
         {
+            log.info(String.format("Got exception in CypherService (%s: %s)", e.getClass().getName(), e.getMessage()), e);
             if (e.getCause() instanceof CypherException)
             {
                 return output.badRequest( e.getCause() );

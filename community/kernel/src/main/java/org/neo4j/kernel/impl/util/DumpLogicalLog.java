@@ -19,19 +19,6 @@
  */
 package org.neo4j.kernel.impl.util;
 
-import java.io.File;
-import java.io.FilenameFilter;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.channels.ReadableByteChannel;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.TimeZone;
-import java.util.TreeSet;
-
-import javax.transaction.xa.Xid;
-
 import org.neo4j.helpers.Args;
 import org.neo4j.helpers.Format;
 import org.neo4j.helpers.Pair;
@@ -43,6 +30,18 @@ import org.neo4j.kernel.impl.transaction.xaframework.LogEntry;
 import org.neo4j.kernel.impl.transaction.xaframework.LogIoUtils;
 import org.neo4j.kernel.impl.transaction.xaframework.XaCommand;
 import org.neo4j.kernel.impl.transaction.xaframework.XaCommandFactory;
+
+import javax.transaction.xa.Xid;
+import java.io.File;
+import java.io.FilenameFilter;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.ReadableByteChannel;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.TimeZone;
+import java.util.TreeSet;
 
 public class DumpLogicalLog
 {
@@ -83,11 +82,15 @@ public class DumpLogicalLog
                 prevLastCommittedTx + "]" );
             long logEntriesFound = 0;
             XaCommandFactory cf = instantiateCommandFactory();
-            while ( readAndPrintEntry( fileChannel, buffer, cf, timeZone ) )
-            {
-                logEntriesFound++;
+            try {
+                while ( readAndPrintEntry( fileChannel, buffer, cf, timeZone ) )
+                {
+                    logEntriesFound++;
+                }
+            } finally {
+                System.out.println(String.format("Finished reading %d log entries at offset %d.", logEntriesFound, fileChannel.position()));
+                fileChannel.close();
             }
-            fileChannel.close();
         }
         return logsFound;
     }
