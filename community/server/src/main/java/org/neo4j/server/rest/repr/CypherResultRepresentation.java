@@ -19,12 +19,6 @@
  */
 package org.neo4j.server.rest.repr;
 
-import static org.neo4j.server.rest.repr.ObjectToRepresentationConverter.getMapRepresentation;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
 import org.neo4j.cypher.javacompat.ExecutionResult;
 import org.neo4j.cypher.javacompat.PlanDescription;
 import org.neo4j.cypher.javacompat.ProfilerStatistics;
@@ -33,30 +27,56 @@ import org.neo4j.graphdb.Path;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.helpers.Function;
 import org.neo4j.helpers.collection.IterableWrapper;
+import org.neo4j.kernel.impl.transaction.TxManager;
+import org.neo4j.kernel.impl.util.StringLogger;
 import org.neo4j.server.webadmin.rest.representations.JmxAttributeRepresentationDispatcher;
+
+import javax.transaction.SystemException;
+import javax.transaction.Transaction;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+import static org.neo4j.server.rest.repr.ObjectToRepresentationConverter.getMapRepresentation;
 
 public class CypherResultRepresentation extends MappingRepresentation
 {
     private final ListRepresentation resultRepresentation;
     private final ListRepresentation columns;
     private final MappingRepresentation plan;
+    private final TxManager txManager;
+    private StringLogger log;
 
 
-    public CypherResultRepresentation( final ExecutionResult result, boolean includePlan )
+    public CypherResultRepresentation(final ExecutionResult result, boolean includePlan, TxManager txManager, StringLogger log)
     {
         super( RepresentationType.STRING );
-        resultRepresentation = createResultRepresentation( result );
-        columns = ListRepresentation.string( result.columns() );
+        this.txManager = txManager;
+        this.log = log;
+        resultRepresentation = createResultRepresentation(result);
+        columns = ListRepresentation.string(result.columns());
         plan = includePlan ? createPlanRepresentation( planProvider( result ) ) : null;
     }
 
     @Override
     protected void serialize( MappingSerializer serializer )
     {
-        serializer.putList( "columns", columns );
-        serializer.putList( "data", resultRepresentation );
-        if (plan != null)
-            serializer.putMapping( "plan", plan );
+        try {
+            serializer.putList( "columns", columns );
+            serializer.putList( "data", resultRepresentation );
+            if (plan != null)
+                serializer.putMapping( "plan", plan );
+        } finally {
+            try {
+                Transaction transaction = txManager.getTransaction();
+                if (transaction != null) {
+                    log.info(String.format("Transaction was still running after query finished: %s", transaction));
+                    transaction.rollback();
+                }
+            } catch (SystemException e) {
+                log.info("Safety rollback failed", e);
+            }
+        }
     }
 
     private ListRepresentation createResultRepresentation(ExecutionResult executionResult) {

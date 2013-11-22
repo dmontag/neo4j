@@ -23,6 +23,8 @@ import org.neo4j.cypher.CypherException;
 import org.neo4j.cypher.javacompat.ExecutionResult;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.kernel.AbstractGraphDatabase;
+import org.neo4j.kernel.GraphDatabaseAPI;
+import org.neo4j.kernel.impl.transaction.TxManager;
 import org.neo4j.kernel.impl.util.StringLogger;
 import org.neo4j.kernel.logging.Logging;
 import org.neo4j.server.database.CypherExecutor;
@@ -50,6 +52,7 @@ public class CypherService
 
     private CypherExecutor cypherExecutor;
     private OutputFormat output;
+    private GraphDatabaseService graphDb;
     private InputFormat input;
     private StringLogger log;
 
@@ -59,6 +62,7 @@ public class CypherService
         this.cypherExecutor = cypherExecutor;
         this.input = input;
         this.output = output;
+        this.graphDb = graphDb;
         Logging logging = ((AbstractGraphDatabase) graphDb).getDependencyResolver().resolveDependency(Logging.class);
         log = logging.getMessagesLog(CypherService.class);
     }
@@ -93,12 +97,16 @@ public class CypherService
             if ( profile )
             {
                 ExecutionResult result = cypherExecutor.getExecutionEngine().profile( query, params );
-                return output.ok( new CypherResultRepresentation( result, true ) );
+                return output.ok( new CypherResultRepresentation(result, true,
+                        ((GraphDatabaseAPI) graphDb).getDependencyResolver().resolveDependency(TxManager.class),
+                        ((GraphDatabaseAPI) graphDb).getDependencyResolver().resolveDependency(Logging.class).getMessagesLog(CypherResultRepresentation.class)) );
             }
             else
             {
                 ExecutionResult result = cypherExecutor.getExecutionEngine().execute( query, params );
-                return output.ok( new CypherResultRepresentation( result, includePlan ) );
+                return output.ok( new CypherResultRepresentation(result, includePlan,
+                        ((GraphDatabaseAPI) graphDb).getDependencyResolver().resolveDependency(TxManager.class),
+                        ((GraphDatabaseAPI) graphDb).getDependencyResolver().resolveDependency(Logging.class).getMessagesLog(CypherResultRepresentation.class)) );
             }
         }
         catch ( Throwable e )

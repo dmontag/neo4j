@@ -19,20 +19,22 @@
  */
 package org.neo4j.server.rest.repr;
 
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
 import org.junit.Test;
 import org.neo4j.cypher.javacompat.ExecutionResult;
 import org.neo4j.cypher.javacompat.PlanDescription;
 import org.neo4j.cypher.javacompat.ProfilerStatistics;
 import org.neo4j.graphdb.ResourceIterator;
 import org.neo4j.helpers.collection.MapUtil;
+import org.neo4j.kernel.impl.transaction.TxManager;
+import org.neo4j.kernel.impl.util.StringLogger;
 import org.neo4j.server.rest.domain.JsonParseException;
 import org.neo4j.server.rest.repr.formats.JsonFormat;
+
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 import static java.util.Arrays.asList;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -71,7 +73,7 @@ public class CypherResultRepresentationTest
         when( result.executionPlanDescription() ).thenReturn( plan );
 
         // When
-        Map<String, Object> serialized = serialize( new CypherResultRepresentation( result, true ) );
+        Map<String, Object> serialized = serialize( new CypherResultRepresentation(result, true, mock(TxManager.class), mock(StringLogger.class)) );
 
         // Then
         Map<String, Object> serializedPlan = (Map<String, Object>) serialized.get( "plan" );
@@ -96,7 +98,7 @@ public class CypherResultRepresentationTest
         when( result.columns() ).thenReturn( new ArrayList<String>() );
 
         // When
-        Map<String, Object> serialized = serialize( new CypherResultRepresentation( result, false ) );
+        Map<String, Object> serialized = serialize( new CypherResultRepresentation(result, false, mock(TxManager.class), mock(StringLogger.class)) );
 
         // Then
         assertFalse( "Didn't expect to see a plan here", serialized.containsKey( "plan" ) );
